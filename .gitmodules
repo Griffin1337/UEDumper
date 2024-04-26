@@ -1,0 +1,3 @@
+[submodule "MemStream"]
+	path = MemStream
+	url = https://github.com/KeganHollern/MemStream.git

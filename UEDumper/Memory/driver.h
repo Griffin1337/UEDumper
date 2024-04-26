@@ -21,15 +21,22 @@
 /// DO NOT include this file in any other file, you might get linker errors!
 /// ANY CHANGES you do to the params in functions, make sure you also edit the memory.cpp and memory.h file!
 
+#include <codecvt> // for std::wstring_convert
+#include "MemStream/FPGA.h"
+#include "MemStream/Process.h"
+#pragma comment(lib, "memstream")
 //global variables here
 HANDLE procHandle = nullptr;
+memstream::FPGA* fpga = nullptr;
+memstream::Process* gProc = nullptr;
 
 //in case you need to initialize anything BEFORE your com works, you can do this in here.
 //this function IS NOT DESIGNED to already take the process name as input or anything related to the target process
 //use the function "load" below which will contain data about the process name
 inline void init()
 {
-    //...
+    if(fpga == nullptr)
+        fpga = new memstream::FPGA();
 }
 
 uint64_t _getBaseAddress(const wchar_t* processName, int& pid);
@@ -44,11 +51,16 @@ void attachToProcess(const int& pid);
  */
 inline void loadData(std::string& processName, uint64_t& baseAddress, int& processID)
 {
+    if(fpga == nullptr) return;
     const auto name = std::wstring(processName.begin(), processName.end());
+    std::wstring_convert<std::codecvt_utf8<wchar_t>> converter;
+    std::string name_string = converter.to_bytes(name);
 
-    baseAddress = _getBaseAddress(name.c_str(), processID);
+    if(gProc == nullptr)
+        gProc = new memstream::Process(fpga, name_string);
 
-    attachToProcess(processID);
+    baseAddress = gProc->GetModuleBase(name_string);
+    processID = gProc->getPid();
 }
 
 /**
@@ -59,17 +71,9 @@ inline void loadData(std::string& processName, uint64_t& baseAddress, int& proce
  */
 inline void _read(const void* address, void* buffer, const DWORD64 size)
 {
+    if(fpga == nullptr || gProc == nullptr) return;
     size_t bytes_read = 0;
-    BOOL b = ReadProcessMemory(procHandle, address, buffer, size, &bytes_read);
-    //if failed, try with lower byte amount
-    if (!b)
-    {
-        //always read 10 bytes lower
-        for (int i = 1; i < size && !b; i += 10)
-        {
-            b = ReadProcessMemory(procHandle, address, buffer, size - i, nullptr);
-        }
-    }
+    gProc->Read((uint64_t)address, (uint8_t*)buffer, size);
 }
 
 
@@ -81,7 +85,8 @@ inline void _read(const void* address, void* buffer, const DWORD64 size)
  */
 inline void _write(void* address, const void* buffer, const DWORD64 size)
 {
-    WriteProcessMemory(procHandle, address, buffer, size, nullptr);
+    if(fpga == nullptr || gProc == nullptr) return;
+    gProc->Write((uint64_t)address, (uint8_t*)buffer, size);
 }
 
 
@@ -95,44 +100,6 @@ uint64_t _getBaseAddress(const wchar_t* processName, int& pid)
 {
     uint64_t baseAddress = 0;
 
-    if (!pid)
-    {
-        // Get a handle to the process
-        const HANDLE hProcess = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
-        if (hProcess == INVALID_HANDLE_VALUE) {
-            return false;
-        }
-
-        // Iterate through the list of processes to find the one with the given filename
-        PROCESSENTRY32 pe32 = { sizeof(PROCESSENTRY32) };
-        if (!Process32First(hProcess, &pe32)) {
-            CloseHandle(hProcess);
-            return false;
-        }
-        while (Process32Next(hProcess, &pe32)) {
-            if (wcscmp(pe32.szExeFile, processName) == 0) {
-                pid = pe32.th32ProcessID;
-                break;
-            }
-        }
-
-        CloseHandle(hProcess);
-    }
-
-    // Get the base address of the process in memory
-    if (pid != 0) {
-        const HANDLE hModule = CreateToolhelp32Snapshot(TH32CS_SNAPMODULE | TH32CS_SNAPMODULE32, pid);
-        if (hModule != INVALID_HANDLE_VALUE) {
-            MODULEENTRY32 me32 = { sizeof(MODULEENTRY32) };
-            if (Module32First(hModule, &me32)) {
-                baseAddress = reinterpret_cast<DWORD64>(me32.modBaseAddr);
-            }
-            CloseHandle(hModule);
-        }
-    }
-
-    // Clean up and return
-
     return baseAddress;
 }
 
@@ -142,5 +109,5 @@ uint64_t _getBaseAddress(const wchar_t* processName, int& pid)
  */
 void attachToProcess(const int& pid)
 {
-    procHandle = OpenProcess(PROCESS_ALL_ACCESS, 0, pid);
+    procHandle = nullptr;
 }

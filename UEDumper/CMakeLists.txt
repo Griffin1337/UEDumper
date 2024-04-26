@@ -8,6 +8,7 @@ add_compile_options(-utf-8 -w)
 # bring in dependencies
 link_directories(../MemStream/build/Windows/AMD64)
 include_directories(../MemStream/include)
+include_directories(../MemStream/deps/memprocfs/include)
 
 #file(GLOB main ./*.cpp)
 file(GLOB_RECURSE Engine ./Engine/*.cpp)

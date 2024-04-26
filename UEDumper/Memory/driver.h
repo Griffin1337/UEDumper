@@ -5,6 +5,7 @@
 #include <Windows.h>
 #include <tlhelp32.h>
 
+#include "Frontend/Windows/LogWindow.h"
 /*
 ██████╗░██╗░░░░░███████╗░█████╗░░██████╗███████╗  ██████╗░███████╗░█████╗░██████╗░██╗
 ██╔══██╗██║░░░░░██╔════╝██╔══██╗██╔════╝██╔════╝  ██╔══██╗██╔════╝██╔══██╗██╔══██╗██║
@@ -51,7 +52,10 @@ void attachToProcess(const int& pid);
  */
 inline void loadData(std::string& processName, uint64_t& baseAddress, int& processID)
 {
-    if(fpga == nullptr) return;
+    if(fpga == nullptr) {
+        windows::LogWindow::Log(windows::LogWindow::logLevels::LOGLEVEL_ERROR, "MEMORY", "DMA not initialized");
+        return;
+    }
     const auto name = std::wstring(processName.begin(), processName.end());
     std::wstring_convert<std::codecvt_utf8<wchar_t>> converter;
     std::string name_string = converter.to_bytes(name);
@@ -71,9 +75,14 @@ inline void loadData(std::string& processName, uint64_t& baseAddress, int& proce
  */
 inline void _read(const void* address, void* buffer, const DWORD64 size)
 {
-    if(fpga == nullptr || gProc == nullptr) return;
+    if(fpga == nullptr || gProc == nullptr) {
+        windows::LogWindow::Log(windows::LogWindow::logLevels::LOGLEVEL_ERROR, "MEMORY", "DMA not initialized");
+        return;
+    }
     size_t bytes_read = 0;
-    gProc->Read((uint64_t)address, (uint8_t*)buffer, size);
+    if(!gProc->Read((uint64_t)address, (uint8_t*)buffer, size)) {
+        windows::LogWindow::Log(windows::LogWindow::logLevels::LOGLEVEL_ERROR, "MEMORY", "Error Reading address %llX", address);
+    }
 }
 
 
@@ -85,7 +94,10 @@ inline void _read(const void* address, void* buffer, const DWORD64 size)
  */
 inline void _write(void* address, const void* buffer, const DWORD64 size)
 {
-    if(fpga == nullptr || gProc == nullptr) return;
+    if(fpga == nullptr || gProc == nullptr) {
+        windows::LogWindow::Log(windows::LogWindow::logLevels::LOGLEVEL_ERROR, "MEMORY", "DMA not initialized");
+        return;
+    }
     gProc->Write((uint64_t)address, (uint8_t*)buffer, size);
 }
 
@@ -99,6 +111,15 @@ inline void _write(void* address, const void* buffer, const DWORD64 size)
 uint64_t _getBaseAddress(const wchar_t* processName, int& pid)
 {
     uint64_t baseAddress = 0;
+    if(fpga == nullptr) {
+        windows::LogWindow::Log(windows::LogWindow::logLevels::LOGLEVEL_ERROR, "MEMORY", "DMA not initialized");
+        return 0;
+    }
+
+    if(gProc == nullptr) {
+        gProc = new memstream::Process(fpga, pid);
+        baseAddress = gProc->GetModuleBase(gProc->getName());
+    }
 
     return baseAddress;
 }
